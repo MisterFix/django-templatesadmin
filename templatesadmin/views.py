@@ -5,6 +5,7 @@ from stat import ST_MTIME, ST_CTIME
 from re import search
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import ImproperlyConfigured
 from django.core.exceptions import ObjectDoesNotExist
@@ -117,9 +118,8 @@ def listing(request,
                         template_dict = (l,)
 
     template_context = {
-        'messages': request.user.get_and_delete_messages(),
+        'messages': messages.get_messages(request),
         'template_dict': template_dict,
-        'ADMIN_MEDIA_PREFIX': settings.ADMIN_MEDIA_PREFIX,
     }
 
     return render_to_response(template_name, template_context,
@@ -137,7 +137,7 @@ def modify(request,
 
     # Check if file is within template-dirs
     if not any([template_path.startswith(templatedir) for templatedir in available_template_dirs]):
-        request.user.message_set.create(message=_('Sorry, that file is not available for editing.'))
+        messages.add_message(request, messages.INFO, _('Sorry, that file is not available for editing.'))
         return HttpResponseRedirect(reverse('templatesadmin-overview'))
 
     if request.method == 'POST':
@@ -153,9 +153,9 @@ def modify(request,
                 for hook in TEMPLATESADMIN_EDITHOOKS:
                     pre_save_notice = hook.pre_save(request, form, template_path)
                     if pre_save_notice:
-                        request.user.message_set.create(message=pre_save_notice)
+                        messages.add_message(request, messages.INFO, pre_save_notice)
             except TemplatesAdminException, e:
-                request.user.message_set.create(message=e.message)
+                messages.add_message(request, messages.ERROR, e.message)
                 return HttpResponseRedirect(request.build_absolute_uri())
 
             # Save the template
@@ -180,26 +180,23 @@ def modify(request,
                 f.write(content)
                 f.close()
             except IOError, e:
-                request.user.message_set.create(
-                    message=_('Template "%(path)s" has not been saved! Reason: %(errormsg)s' % {
+                messages.add_message(request, messages.INFO,
+                    _('Template "%(path)s" has not been saved! Reason: %(errormsg)s' % {
                         'path': path,
                         'errormsg': e
-                    })
-                )
+                    }))
                 return HttpResponseRedirect(request.build_absolute_uri())
 
             try:
                 for hook in TEMPLATESADMIN_EDITHOOKS:
                     post_save_notice = hook.post_save(request, form, template_path)
                     if post_save_notice:
-                        request.user.message_set.create(message=post_save_notice)
+                        messages.add_message(request, messages.INFO, post_save_notice)
             except TemplatesAdminException, e:
-                request.user.message_set.create(message=e.message)
+                messages.add_message(request, messages.ERROR, e.message)
                 return HttpResponseRedirect(request.build_absolute_uri())
 
-            request.user.message_set.create(
-                message=_('Template "%s" was saved successfully.' % path)
-            )
+            messages.add_message(request, messages.INFO, _('Template "%s" was saved successfully.' % path))
             return HttpResponseRedirect(reverse('templatesadmin-overview'))
     else:
         template_file = codecs.open(template_path, 'r', 'utf-8').read()
@@ -213,12 +210,11 @@ def modify(request,
         )
 
     template_context = {
-        'messages': request.user.get_and_delete_messages(),
+        'messages': messages.get_messages(request),
         'form': form,
         'short_path': path,
         'template_path': path,
         'template_writeable': os.access(template_path, os.W_OK),
-        'ADMIN_MEDIA_PREFIX': settings.ADMIN_MEDIA_PREFIX,
     }
 
     return render_to_response(template_name, template_context,
